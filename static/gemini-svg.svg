@@ -1,0 +1,27 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Modern Blue to Teal Gradient -->
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1A73E8" />
+      <stop offset="100%" stop-color="#00BFA5" />
+    </linearGradient>
+  </defs>
+
+  <!-- App Icon Base / Background -->
+  <rect x="56" y="56" width="400" height="400" rx="90" fill="url(#bgGradient)" />
+
+  <!-- Left Side: Audio Waveform -->
+  <rect x="116" y="206" width="24" height="100" rx="12" fill="#FFFFFF" />
+  <rect x="160" y="156" width="24" height="200" rx="12" fill="#FFFFFF" />
+  <rect x="204" y="186" width="24" height="140" rx="12" fill="#FFFFFF" />
+
+  <!-- Center: Timestamps (Dots) -->
+  <circle cx="256" cy="180" r="10" fill="#FFFFFF" />
+  <circle cx="256" cy="256" r="10" fill="#FFFFFF" />
+  <circle cx="256" cy="332" r="10" fill="#FFFFFF" />
+
+  <!-- Right Side: Transcribed Text Lines -->
+  <rect x="286" y="170" width="90" height="20" rx="10" fill="#FFFFFF" />
+  <rect x="286" y="246" width="100" height="20" rx="10" fill="#FFFFFF" />
+  <rect x="286" y="322" width="70" height="20" rx="10" fill="#FFFFFF" />
+</svg>
