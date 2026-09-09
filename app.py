@@ -7,7 +7,7 @@ import string
 import re
 import time
 from difflib import SequenceMatcher
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from vosk import Model, KaldiRecognizer
 import nltk
