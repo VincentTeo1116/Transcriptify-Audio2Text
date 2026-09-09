@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transcriptify — audio to timestamped text</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+    <style>
+        :root {
+            --blue-500: #3b82f6;
+            --blue-600: #2563eb;
+            --green-500: #28a745;
+            --green-600: #059669;
+            --amber: #f59e0b;
+            --amber-bg: #fef3c7;
+            --amber-ink: #92400e;
+            --red-500: #ef4444;
+            --red-600: #dc2626;
+
+            --ink: #1e293b;
+            --muted: #64748b;
+            --line: #e5e7eb;
+            --surface: #ffffff;
+            --surface-2: #f8fafc;
+            --page: #eef2f9;
+
+            --r-card: 20px;
+            --r-md: 12px;
+            --r-pill: 40px;
+
+            --shadow-card: 0 20px 60px rgba(15, 23, 42, 0.10);
+            --shadow-lift: 0 4px 12px rgba(37, 99, 235, 0.30);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            /* Very subtle page gradient — keeps the card the focal point */
+            background:
+                radial-gradient(1000px 500px at 50% -10%, #dbeafe 0%, rgba(219, 234, 254, 0) 60%),
+                var(--page);
+            color: var(--ink);
+            min-height: 100vh;
+            padding: 32px 16px 48px;
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ============================================================
+   SHELL
+   ============================================================ */
+        .app-card {
+            max-width: 880px;
+            margin: 0 auto;
+            background: var(--surface);
+            border-radius: var(--r-card);
+            box-shadow: var(--shadow-card);
+            padding: 32px;
+        }
+
+        @media (max-width: 576px) {
+            .app-card {
+                padding: 22px 18px;
+            }
+        }
+
+        .app-head {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 26px;
+        }
+
+        .app-mark {
+            width: 52px;
+            height: 52px;
+            flex: 0 0 52px;
+            border-radius: 16px;
+            display: grid;
+            place-items: center;
+            background: linear-gradient(135deg, var(--blue-500), var(--blue-600));
+            color: #fff;
+            box-shadow: var(--shadow-lift);
+        }
+
+        .app-mark i {
+            font-size: 26px;
+        }
+
+        .app-head h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin: 0;
+            letter-spacing: -0.01em;
+        }
+
+        .app-head p {
+            margin: 2px 0 0;
+            color: var(--muted);
+            font-size: 0.94rem;
+        }
+
+        /* ============================================================
+   1. DROP ZONE
+   - fades in on load
+   - gradient background pans on hover / dragover (animated, subtle)
+   ============================================================ */
+        .dropzone {
+            position: relative;
+            border: 2px dashed #cbd5e1;
+            border-radius: var(--r-card);
+            padding: 44px 24px;
+            text-align: center;
+            cursor: pointer;
+            background: var(--surface-2);
+            background-size: 200% 200%;
+            transition: border-color .2s ease, transform .2s ease, box-shadow .2s ease;
+            animation: fadeUp .5s ease-out both;
+        }
+
+        .dropzone:hover,
+        .dropzone:focus-visible {
+            border-color: var(--blue-500);
+            transform: translateY(-2px);
+            background-image: linear-gradient(120deg, #f8fafc, #eff6ff, #e0edff, #eff6ff, #f8fafc);
+            animation: fadeUp .5s ease-out both, gradientPan 6s ease infinite;
+        }
+
+        .dropzone.is-dragover {
+            border-color: var(--blue-600);
+            border-style: solid;
+            box-shadow: 0 0 0 6px rgba(59, 130, 246, .12);
+            background-image: linear-gradient(120deg, #eff6ff, #dbeafe, #bfdbfe, #dbeafe, #eff6ff);
+            animation: gradientPan 3s ease infinite;
+        }
+
+        .dropzone input[type="file"] {
+            display: none;
+        }
+
+        .dropzone .dz-icon {
+            font-size: 46px;
+            color: var(--blue-600);
+            display: block;
+            margin-bottom: 10px;
+        }
+
+        .dropzone.is-dragover .dz-icon {
+            animation: bob .8s ease-in-out infinite;
+        }
+
+        .dropzone .dz-title {
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .dropzone .dz-hint {
+            color: var(--muted);
+            font-size: .84rem;
+            margin: 6px 0 0;
+        }
+
+        .dropzone:focus-visible {
+            outline: 3px solid rgba(37, 99, 235, .45);
+            outline-offset: 3px;
+        }
+
+        /* ============================================================
+   2. FILE DETAILS CARD  (name / size / duration)
+   ============================================================ */
+        .file-card {
+            display: none;
+            align-items: center;
+            gap: 14px;
+            margin-top: 18px;
+            padding: 14px 16px;
+            border: 1px solid var(--line);
+            border-radius: var(--r-md);
+            background: linear-gradient(180deg, #ffffff, var(--surface-2));
+            animation: slideUp .35s ease-out both;
+        }
+
+        .file-card.show {
+            display: flex;
+        }
+
+        .file-card .fc-icon {
+            width: 42px;
+            height: 42px;
+            flex: 0 0 42px;
+            border-radius: 12px;
+            display: grid;
+            place-items: center;
+            background: #eff6ff;
+            color: var(--blue-600);
+            font-size: 20px;
+        }
+
+        .file-card .fc-body {
+            min-width: 0;
+            flex: 1;
+        }
+
+        .file-card .fc-name {
+            font-weight: 600;
+            word-break: break-all;
+            line-height: 1.3;
+        }
+
+        .file-card .fc-meta {
+            color: var(--muted);
+            font-size: .84rem;
+            margin-top: 3px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px 14px;
+        }
+
+        .file-card .fc-meta span {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .icon-btn {
+            border: none;
+            background: #f3f4f6;
+            color: #6b7280;
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            display: grid;
+            place-items: center;
+            cursor: pointer;
+            transition: background .2s ease, color .2s ease, transform .2s ease;
+        }
+
+        .icon-btn:hover {
+            background: #fee2e2;
+            color: var(--red-600);
+            transform: rotate(90deg);
+        }
+
+        /* ============================================================
+   3. NOTICES (warning / error) — same language as your modal CSS
+   ============================================================ */
+        .notice {
+            display: none;
+            align-items: flex-start;
+            gap: 10px;
+            border-radius: var(--r-md);
+            padding: 12px 14px;
+            margin-top: 14px;
+            font-size: .9rem;
+            line-height: 1.45;
+            animation: slideUp .3s ease-out both;
+        }
+
+        .notice.show {
+            display: flex;
+        }
+
+        .notice i {
+            font-size: 18px;
+            line-height: 1.3;
+        }
+
+        .notice-warning {
+            background: var(--amber-bg);
+            color: var(--amber-ink);
+        }
+
+        .notice-warning i {
+            color: var(--amber);
+        }
+
+        .notice-error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .notice-error i {
+            color: var(--red-500);
+        }
+
+        /* ============================================================
+   4. BUTTONS (pill + gradient + ripple)
+   ============================================================ */
+        .btn-app {
+            position: relative;
+            overflow: hidden;
+            /* clips the ripple */
+            border: none;
+            cursor: pointer;
+            padding: 12px 28px;
+            border-radius: var(--r-pill);
+            font-weight: 600;
+            font-size: .95rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: transform .2s ease, box-shadow .2s ease, background .2s ease, opacity .2s ease;
+        }
+
+        .btn-primary-app {
+            background: linear-gradient(135deg, var(--blue-500), var(--blue-600));
+            color: #fff;
+        }
+
+        .btn-primary-app:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lift);
+        }
+
+        .btn-quiet {
+            background: #f3f4f6;
+            color: #475569;
+        }
+
+        .btn-quiet:hover {
+            background: #e5e7eb;
+            transform: translateY(-2px);
+        }
+
+        .btn-app:disabled {
+            opacity: .5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-app:focus-visible {
+            outline: 3px solid rgba(37, 99, 235, .45);
+            outline-offset: 2px;
+        }
+
+        /* Ripple element injected by JS on click */
+        .ripple {
+            position: absolute;
+            border-radius: 50%;
+            transform: scale(0);
+            background: rgba(255, 255, 255, .55);
+            pointer-events: none;
+            animation: ripple .6s ease-out;
+        }
+
+        .btn-quiet .ripple {
+            background: rgba(37, 99, 235, .25);
+        }
+
+        .actions {
+            margin-top: 20px;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        /* ============================================================
+   5. PROCESSING STATE — pulsing ring spinner + elapsed timer
+   ============================================================ */
+        .processing {
+            display: none;
+            text-align: center;
+            padding: 26px 0 6px;
+        }
+
+        .processing.show {
+            display: block;
+            animation: slideUp .3s ease-out both;
+        }
+
+        .spinner-wrap {
+            position: relative;
+            width: 74px;
+            height: 74px;
+            margin: 0 auto 16px;
+        }
+
+        .spinner-pulse {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: rgba(59, 130, 246, .22);
+            animation: pulse 1.8s ease-out infinite;
+            /* soft halo */
+        }
+
+        .spinner-ring {
+            position: absolute;
+            inset: 12px;
+            border-radius: 50%;
+            border: 4px solid #dbeafe;
+            border-top-color: var(--blue-600);
+            animation: spin 1s linear infinite;
+        }
+
+        .spinner-wrap i {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            font-size: 22px;
+            color: var(--blue-600);
+        }
+
+        .processing .p-status {
+            font-weight: 600;
+        }
+
+        .processing .p-hint {
+            color: var(--muted);
+            font-size: .87rem;
+            margin-top: 6px;
+            min-height: 1.3em;
+            transition: opacity .3s ease;
+        }
+
+        /* ============================================================
+   6. TRANSCRIPT — slides in, scrolls, alternating line colours
+   ============================================================ */
+        .result {
+            display: none;
+            margin-top: 28px;
+            border-top: 1px solid var(--line);
+            padding-top: 22px;
+        }
+
+        .result.show {
+            display: block;
+            animation: slideUp .45s ease-out both;
+        }
+
+        .result-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+
+        .result-head h2 {
+            font-size: 1.05rem;
+            font-weight: 700;
+            margin: 0;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .count-pill {
+            background: #eff6ff;
+            color: var(--blue-600);
+            border-radius: var(--r-pill);
+            padding: 4px 12px;
+            font-size: .8rem;
+            font-weight: 600;
+        }
+
+        .transcript {
+            border: 1px solid var(--line);
+            border-radius: var(--r-md);
+            max-height: 460px;
+            overflow-y: auto;
+            background: var(--surface);
+        }
+
+        .t-line {
+            display: flex;
+            gap: 12px;
+            align-items: baseline;
+            padding: 10px 14px;
+            font-size: .93rem;
+            line-height: 1.6;
+            border-bottom: 1px solid #f1f5f9;
+            animation: lineIn .3s ease-out both;
+            /* staggered by JS */
+        }
+
+        .t-line:nth-child(even) {
+            background: var(--surface-2);
+        }
+
+        /* alternating rows */
+        .t-line:last-child {
+            border-bottom: none;
+        }
+
+        .t-line:hover {
+            background: #eff6ff;
+        }
+
+        .t-time {
+            flex: 0 0 auto;
+            user-select: all;
+            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+            font-size: .78rem;
+            color: var(--blue-600);
+            font-weight: 600;
+            background: #eff6ff;
+            border-radius: 6px;
+            padding: 2px 7px;
+            white-space: nowrap;
+        }
+
+        .transcript::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        .transcript::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 8px;
+            border: 3px solid #fff;
+        }
+
+        /* ============================================================
+   7. COPY TOAST — same card language as your #successPopup,
+   but bottom-anchored so it never blocks the transcript.
+   ============================================================ */
+        #copyToast {
+            position: fixed;
+            left: 50%;
+            bottom: 28px;
+            transform: translateX(-50%);
+            z-index: 999999;
+            display: none;
+            background: #fff;
+            border-radius: var(--r-card);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, .25);
+            padding: 14px 22px;
+            align-items: center;
+            gap: 12px;
+        }
+
+        #copyToast.show {
+            display: flex;
+            animation: toastIn .3s ease-out;
+        }
+
+        #copyToast i {
+            font-size: 26px;
+            color: var(--green-500);
+        }
+
+        #copyToast strong {
+            display: block;
+            font-size: .95rem;
+        }
+
+        #copyToast span {
+            color: var(--muted);
+            font-size: .82rem;
+        }
+
+        .foot {
+            text-align: center;
+            color: #94a3b8;
+            font-size: .8rem;
+            margin-top: 22px;
+        }
+
+        .foot i {
+            color: var(--blue-500);
+        }
+
+        /* ============================================================
+   KEYFRAMES
+   ============================================================ */
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(14px);
+            }
+
+            to {
+                opacity: 1;
+                transform: none;
+            }
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(18px);
+            }
+
+            to {
+                opacity: 1;
+                transform: none;
+            }
+        }
+
+        @keyframes lineIn {
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+
+            to {
+                opacity: 1;
+                transform: none;
+            }
+        }
+
+        @keyframes toastIn {
+            from {
+                opacity: 0;
+                transform: translate(-50%, 20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translate(-50%, 0);
+            }
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(.85);
+                opacity: .8;
+            }
+
+            70% {
+                transform: scale(1.25);
+                opacity: 0;
+            }
+
+            100% {
+                opacity: 0;
+            }
+        }
+
+        @keyframes bob {
+
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-6px);
+            }
+        }
+
+        @keyframes gradientPan {
+            0% {
+                background-position: 0% 50%;
+            }
+
+            50% {
+                background-position: 100% 50%;
+            }
+
+            100% {
+                background-position: 0% 50%;
+            }
+        }
+
+        @keyframes ripple {
+            to {
+                transform: scale(4);
+                opacity: 0;
+            }
+        }
+
+        /* Respect people who ask their OS for less motion */
+        @media (prefers-reduced-motion: reduce) {
+
+            *,
+            *::before,
+            *::after {
+                animation-duration: .01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: .01ms !important;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <main class="app-card">
+
+        <header class="app-head">
+            <div class="app-mark"><i class="bi bi-soundwave"></i></div>
+            <div>
+                <h1>Transcriptify</h1>
+                <p>Turn an audio or video file into timestamped, punctuated text.</p>
+            </div>
+        </header>
+
+        <!-- Drop zone. role/tabindex make it keyboard-operable, not just clickable. -->
+        <div class="dropzone" id="dropzone" role="button" tabindex="0"
+            aria-label="Choose an audio or video file, or drop one here">
+            <i class="bi bi-cloud-upload-fill dz-icon"></i>
+            <p class="dz-title">Drop a file here, or click to browse</p>
+            <p class="dz-hint">MP3, MP4, WAV, M4A and similar. Files under 10 minutes finish fastest.</p>
+            <input type="file" id="fileInput" accept="audio/*,video/*">
+        </div>
+
+        <!-- File details: name, size, duration (duration is read in the browser) -->
+        <div class="file-card" id="fileCard">
+            <div class="fc-icon"><i class="bi bi-file-earmark-music"></i></div>
+            <div class="fc-body">
+                <div class="fc-name" id="fileName"></div>
+                <div class="fc-meta">
+                    <span><i class="bi bi-hdd"></i><span id="fileSize">—</span></span>
+                    <span><i class="bi bi-clock"></i><span id="fileDuration">reading length…</span></span>
+                    <span><i class="bi bi-filetype-mp3"></i><span id="fileType">—</span></span>
+                </div>
+            </div>
+            <button class="icon-btn" id="removeBtn" title="Remove file" aria-label="Remove file"><i
+                    class="bi bi-x-lg"></i></button>
+        </div>
+
+        <div class="notice notice-warning" id="warningBox"><i class="bi bi-exclamation-triangle-fill"></i>
+            <div id="warningText"></div>
+        </div>
+        <div class="notice notice-error" id="errorBox"><i class="bi bi-x-octagon-fill"></i>
+            <div id="errorText"></div>
+        </div>
+
+        <div class="actions">
+            <button class="btn-app btn-primary-app" id="uploadBtn" disabled>
+                <i class="bi bi-magic"></i> Transcribe
+            </button>
+        </div>
+
+        <!-- Processing state: pulsing spinner, live elapsed timer, rotating hint -->
+        <section class="processing" id="processing" aria-live="polite">
+            <div class="spinner-wrap">
+                <div class="spinner-pulse"></div>
+                <div class="spinner-ring"></div>
+                <i class="bi bi-hourglass-split"></i>
+            </div>
+            <div class="p-status" id="statusText">Transcribing…</div>
+            <div class="p-hint" id="hintText"></div>
+        </section>
+
+        <!-- Results -->
+        <section class="result" id="result">
+            <div class="result-head">
+                <h2><i class="bi bi-card-text"></i> Transcript</h2>
+                <span class="count-pill" id="countPill">0 sentences</span>
+            </div>
+            <div class="transcript" id="transcript"></div>
+            <div class="actions">
+                <button class="btn-app btn-quiet" id="copyBtn"><i class="bi bi-clipboard"></i> Copy transcript</button>
+                <button class="btn-app btn-quiet" id="downloadBtn"><i class="bi bi-download"></i> Download .txt</button>
+            </div>
+        </section>
+
+        <p class="foot"><i class="bi bi-cpu"></i> Vosk speech recognition, Gemini punctuation</p>
+    </main>
+
+    <!-- Copy confirmation toast -->
+    <div id="copyToast" role="status" aria-live="polite">
+        <i class="bi bi-check-circle-fill"></i>
+        <div><strong>Copied</strong><span>Transcript is on your clipboard.</span></div>
+    </div>
+
+    <script>
+        /* ============================================================
+           CONFIG — thresholds the UI warns on
+           ============================================================ */
+        const SIZE_WARN_MB = 50;
+        const DURATION_WARN_S = 600;   // 10 minutes
+
+        const $ = id => document.getElementById(id);
+        const dropzone = $('dropzone'), fileInput = $('fileInput'), fileCard = $('fileCard');
+        const uploadBtn = $('uploadBtn'), processing = $('processing'), result = $('result');
+        const warningBox = $('warningBox'), errorBox = $('errorBox');
+
+        let selectedFile = null;
+        let sentences = null;      // last successful result, used by copy/download
+        let timerId = null, hintId = null, startedAt = 0;
+
+        /* ============================================================
+           FILE SELECTION — click, keyboard, and drag & drop
+           ============================================================ */
+        dropzone.addEventListener('click', () => fileInput.click());
+        dropzone.addEventListener('keydown', e => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+        });
+        ['dragenter', 'dragover'].forEach(evt =>
+            dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.classList.add('is-dragover'); })
+        );
+        ['dragleave', 'drop'].forEach(evt =>
+            dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.classList.remove('is-dragover'); })
+        );
+        dropzone.addEventListener('drop', e => {
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', e => {
+            if (e.target.files.length) handleFile(e.target.files[0]);
+        });
+
+        function handleFile(file) {
+            selectedFile = file;
+            hide(result); hide(errorBox); hide(warningBox);
+
+            $('fileName').textContent = file.name;
+            $('fileSize').textContent = formatSize(file.size);
+            $('fileType').textContent = file.type || file.name.split('.').pop().toUpperCase();
+            $('fileDuration').textContent = 'reading length…';
+            fileCard.classList.add('show');
+            uploadBtn.disabled = false;
+
+            // Icon reflects audio vs video
+            $('fileCard').querySelector('.fc-icon i').className =
+                file.type.startsWith('video') ? 'bi bi-file-earmark-play' : 'bi bi-file-earmark-music';
+
+            if (file.size > SIZE_WARN_MB * 1024 * 1024) {
+                warn(`This file is ${formatSize(file.size)}. Anything over ${SIZE_WARN_MB} MB can take several minutes.`);
+            }
+            readDuration(file);   // async — may add a second warning
+        }
+
+        /* Reads length in the browser by loading metadata only. Costs nothing server-side. */
+        function readDuration(file) {
+            const el = document.createElement(file.type.startsWith('video') ? 'video' : 'audio');
+            const url = URL.createObjectURL(file);
+            el.preload = 'metadata';
+            el.onloadedmetadata = () => {
+                URL.revokeObjectURL(url);
+                const d = el.duration;
+                if (!isFinite(d) || d <= 0) { $('fileDuration').textContent = 'length unknown'; return; }
+                $('fileDuration').textContent = formatClock(d);
+                if (d > DURATION_WARN_S) {
+                    warn(`This recording is ${formatClock(d)} long. Transcribing runs roughly in real time, so expect a wait — and the server may time out past 15 minutes.`);
+                }
+            };
+            el.onerror = () => { URL.revokeObjectURL(url); $('fileDuration').textContent = 'length unknown'; };
+            el.src = url;
+        }
+
+        $('removeBtn').addEventListener('click', e => {
+            e.stopPropagation();
+            selectedFile = null;
+            fileInput.value = '';
+            fileCard.classList.remove('show');
+            uploadBtn.disabled = true;
+            hide(warningBox); hide(errorBox); hide(result);
+        });
+
+        /* ============================================================
+           UPLOAD — unchanged contract: POST /upload, field name "file"
+           Response: { success, sentences:[{start,end,text}], warning } or { error }
+           ============================================================ */
+        uploadBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+
+            hide(result); hide(errorBox); hide(warningBox);
+            processing.classList.add('show');
+            uploadBtn.disabled = true;
+            startProgress();
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            try {
+                const response = await fetch('/upload', { method: 'POST', body: formData });
+                const data = await response.json();
+
+                if (!response.ok) { showError(data.error || 'The server could not process this file.'); return; }
+                if (data.warning) warn(data.warning);
+
+                if (data.success && Array.isArray(data.sentences) && data.sentences.length) {
+                    sentences = data.sentences;
+                    renderTranscript(sentences);
+                    result.classList.add('show');
+                    $('countPill').textContent = sentences.length + (sentences.length === 1 ? ' sentence' : ' sentences');
+                } else {
+                    showError('No speech was recognised in this file. Try a clearer recording or a different format.');
+                }
+            } catch (err) {
+                showError('Could not reach the server: ' + err.message);
+            } finally {
+                stopProgress();
+                processing.classList.remove('show');
+                uploadBtn.disabled = false;
+            }
+        });
+
+        /* Elapsed timer + rotating hints. The backend returns one response at the end,
+           so this communicates "still working" honestly rather than faking a percentage. */
+        const HINTS = [
+            'Converting the file to 16 kHz mono audio.',
+            'Running offline speech recognition with Vosk.',
+            'Adding punctuation and capitalisation.',
+            'Matching each sentence back to its timestamp.',
+            'Long recordings take roughly as long as they run.'
+        ];
+        function startProgress() {
+            startedAt = Date.now();
+            let i = 0;
+            $('hintText').textContent = HINTS[0];
+            tick();
+            timerId = setInterval(tick, 1000);
+            hintId = setInterval(() => {
+                i = (i + 1) % HINTS.length;
+                const h = $('hintText');
+                h.style.opacity = 0;
+                setTimeout(() => { h.textContent = HINTS[i]; h.style.opacity = 1; }, 300);
+            }, 4500);
+        }
+        function tick() {
+            const s = Math.floor((Date.now() - startedAt) / 1000);
+            $('statusText').textContent = `Transcribing… ${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')} elapsed`;
+        }
+        function stopProgress() { clearInterval(timerId); clearInterval(hintId); }
+
+        /* ============================================================
+           RENDERING
+           ============================================================ */
+        function renderTranscript(list) {
+            const box = $('transcript');
+            box.innerHTML = '';
+            list.forEach((s, i) => {
+                const line = document.createElement('div');
+                line.className = 't-line';
+                line.style.animationDelay = Math.min(i * 25, 600) + 'ms';   // gentle stagger
+                const time = document.createElement('span');
+                time.className = 't-time';
+                time.textContent = `${s.start} – ${s.end}`;
+                const text = document.createElement('span');
+                text.textContent = s.text;        // textContent, not innerHTML — transcript text is never treated as markup
+                line.append(time, text);
+                box.appendChild(line);
+            });
+            box.scrollTop = 0;
+        }
+
+        /* ============================================================
+           COPY / DOWNLOAD
+           ============================================================ */
+        const asPlainText = () => sentences.map(s => `[${s.start} - ${s.end}] ${s.text}`).join('\n');
+
+        $('copyBtn').addEventListener('click', async () => {
+            if (!sentences) return;
+            const text = asPlainText();
+            try {
+                await navigator.clipboard.writeText(text);
+            } catch {
+                const area = document.createElement('textarea');   // fallback for non-secure contexts
+                area.value = text; document.body.appendChild(area);
+                area.select(); document.execCommand('copy'); area.remove();
+            }
+            showToast();
+        });
+
+        $('downloadBtn').addEventListener('click', () => {
+            if (!sentences) return;
+            const base = selectedFile ? selectedFile.name.replace(/\.[^.]+$/, '') : 'transcript';
+            const blob = new Blob([asPlainText()], { type: 'text/plain;charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `${base}-transcript.txt`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+        });
+
+        function showToast() {
+            const t = $('copyToast');
+            t.classList.add('show');
+            clearTimeout(t._hide);
+            t._hide = setTimeout(() => t.classList.remove('show'), 2200);
+        }
+
+        /* ============================================================
+           HELPERS + RIPPLE
+           ============================================================ */
+        function warn(msg) { $('warningText').textContent = msg; warningBox.classList.add('show'); }
+        function showError(msg) { $('errorText').textContent = msg; errorBox.classList.add('show'); }
+        function hide(el) { el.classList.remove('show'); }
+        function formatSize(b) { return b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : (b / 1024).toFixed(0) + ' KB'; }
+        function formatClock(sec) {
+            const m = Math.floor(sec / 60), s = Math.round(sec % 60);
+            return `${m}m ${String(s).padStart(2, '0')}s`;
+        }
+
+        // Material-style ripple on every pill button
+        document.querySelectorAll('.btn-app').forEach(btn => {
+            btn.addEventListener('click', e => {
+                const r = btn.getBoundingClientRect();
+                const size = Math.max(r.width, r.height);
+                const span = document.createElement('span');
+                span.className = 'ripple';
+                span.style.width = span.style.height = size + 'px';
+                span.style.left = (e.clientX - r.left - size / 2) + 'px';
+                span.style.top = (e.clientY - r.top - size / 2) + 'px';
+                btn.appendChild(span);
+                setTimeout(() => span.remove(), 600);
+            });
+        });
+    </script>
+</body>
+
+</html>
